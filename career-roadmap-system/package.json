@@ -1,0 +1,13 @@
+{
+  "name": "career-roadmap-system",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -k -n BACKEND,FRONTEND \"npm run backend\" \"npm run vite\"",
+    "backend": "cd backend && node server.js",
+    "vite": "cd frontend && npm run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
+}

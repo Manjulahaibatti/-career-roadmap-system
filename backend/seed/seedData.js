@@ -1,0 +1,1590 @@
+import Career from "../models/Career.js";
+import Roadmap from "../models/Roadmap.js";
+import Resource from "../models/Resource.js";
+import { additionalResources } from "../../shared/additionalResources.js";
+import {
+  createCareerRoadmap,
+  getGeneratedCareerCatalog,
+} from "../../shared/careerCatalog.js";
+import { createCareerCourseResources } from "../../shared/careerCourseResources.js";
+
+const seedGeneratedCatalog = async () => {
+  const careers = getGeneratedCareerCatalog();
+  const careerSlugs = careers.map((career) => career.slug);
+  const existingCareers = await Career.countDocuments({ slug: { $in: careerSlugs } });
+  if (existingCareers !== careers.length) {
+    await Career.bulkWrite(
+      careers.map((career) => ({
+        updateOne: {
+          filter: { slug: career.slug },
+          update: { $set: career },
+          upsert: true,
+        },
+      }))
+    );
+  }
+
+  const roadmaps = careers.map(createCareerRoadmap);
+  const existingRoadmaps = await Roadmap.countDocuments({
+    careerSlug: { $in: careerSlugs },
+  });
+  if (existingRoadmaps !== roadmaps.length) {
+    await Roadmap.bulkWrite(
+      roadmaps.map((roadmap) => ({
+        updateOne: {
+          filter: { careerSlug: roadmap.careerSlug },
+          update: { $set: roadmap },
+          upsert: true,
+        },
+      }))
+    );
+  }
+
+  const expectedResourceCount = roadmaps.reduce(
+    (total, roadmap) => total + roadmap.steps.length * 5,
+    0
+  );
+  const existingResourceCount = await Resource.countDocuments({
+    resourceKey: { $exists: true },
+  });
+  if (existingResourceCount !== expectedResourceCount) {
+    const resources = careers.flatMap((career) =>
+      createCareerCourseResources(career, createCareerRoadmap(career))
+    );
+    const resourceKeys = resources.map((resource) => resource.id);
+    const existingResources = await Resource.countDocuments({
+      resourceKey: { $in: resourceKeys },
+    });
+    if (existingResources !== resources.length) {
+      await Resource.bulkWrite(
+        resources.map((resource) => ({
+          updateOne: {
+            filter: { resourceKey: resource.id },
+            update: {
+              $set: { ...resource, resourceKey: resource.id },
+            },
+            upsert: true,
+          },
+        }))
+      );
+    }
+  }
+};
+
+export const seedDatabaseIfEmpty = async () => {
+  try {
+    const careerCount = await Career.countDocuments();
+    const resourceCount = await Resource.countDocuments();
+
+    // If already seeded with expanded set, skip
+    if (careerCount >= 16 && resourceCount >= 30) {
+      await Resource.bulkWrite(
+        additionalResources.map((resource) => ({
+          updateOne: {
+            filter: { title: resource.title },
+            update: { $set: resource },
+            upsert: true,
+          },
+        }))
+      );
+      await seedGeneratedCatalog();
+      const updatedCareerCount = await Career.countDocuments();
+      const updatedResourceCount = await Resource.countDocuments();
+      console.log(`Database already populated with ${updatedCareerCount} careers and ${updatedResourceCount} resources.`);
+      return;
+    }
+
+    console.log("Populating database with 500 career paths across five categories, roadmaps, and courses...");
+
+    // Clear existing to populate rich expanded set
+    await Career.deleteMany({});
+    await Roadmap.deleteMany({});
+    await Resource.deleteMany({});
+
+    // ==========================================
+    // 1. CAREERS (TECHNICAL & NON-TECHNICAL)
+    // ==========================================
+    const careers = [
+      // --- TECHNICAL CAREERS ---
+      {
+        name: "Software Developer",
+        slug: "software-developer",
+        description:
+          "Design, build, test, and deploy modern scalable software applications and full-stack systems.",
+        skills: ["JavaScript", "Python", "React", "Node.js", "SQL", "Git", "System Design"],
+        difficulty: "Intermediate",
+        learningTime: "6-9 Months",
+        category: "Technology",
+        isTechnical: true,
+        domain: "Software & Engineering",
+        icon: "💻",
+        demand: "Very High",
+        averageSalary: "$95,000 - $145,000",
+      },
+      {
+        name: "Frontend Developer",
+        slug: "frontend-developer",
+        description:
+          "Specialize in crafting responsive, performant, accessible, and interactive client-side web experiences.",
+        skills: ["HTML5", "CSS3/Tailwind", "JavaScript", "TypeScript", "React", "Next.js", "Web Performance"],
+        difficulty: "Beginner",
+        learningTime: "4-7 Months",
+        category: "Technology",
+        isTechnical: true,
+        domain: "Software & Engineering",
+        icon: "🖥️",
+        demand: "High",
+        averageSalary: "$85,000 - $130,000",
+      },
+      {
+        name: "Backend Developer",
+        slug: "backend-developer",
+        description:
+          "Build scalable server-side architectures, microservices, databases, authentication, and secure APIs.",
+        skills: ["Node.js", "Python", "Go", "PostgreSQL", "MongoDB", "Redis", "Docker", "API Security"],
+        difficulty: "Intermediate",
+        learningTime: "6-9 Months",
+        category: "Technology",
+        isTechnical: true,
+        domain: "Software & Engineering",
+        icon: "⚙️",
+        demand: "Very High",
+        averageSalary: "$98,000 - $150,000",
+      },
+      {
+        name: "Data Analyst",
+        slug: "data-analyst",
+        description:
+          "Transform raw data into meaningful business insights through visualization, statistics, and KPI reporting.",
+        skills: ["SQL", "Excel", "Tableau", "Power BI", "Python", "Statistics", "Data Cleaning"],
+        difficulty: "Beginner",
+        learningTime: "4-6 Months",
+        category: "Data & Analytics",
+        isTechnical: true,
+        domain: "Data & AI",
+        icon: "📊",
+        demand: "High",
+        averageSalary: "$75,000 - $115,000",
+      },
+      {
+        name: "Data Scientist",
+        slug: "data-scientist",
+        description:
+          "Develop predictive models, advanced statistical algorithms, machine learning pipelines, and deep analytical experiments.",
+        skills: ["Python", "R", "Machine Learning", "Statistics", "Pandas", "Scikit-Learn", "Feature Engineering"],
+        difficulty: "Advanced",
+        learningTime: "8-12 Months",
+        category: "Data & Analytics",
+        isTechnical: true,
+        domain: "Data & AI",
+        icon: "🔬",
+        demand: "Very High",
+        averageSalary: "$110,000 - $165,000",
+      },
+      {
+        name: "AI/ML Engineer",
+        slug: "ai-ml-engineer",
+        description:
+          "Build and deploy cutting-edge artificial intelligence, deep neural networks, LLM agents, and vector search systems.",
+        skills: ["PyTorch", "TensorFlow", "Transformers", "LLMs", "RAG", "Python", "Vector DBs", "CUDA"],
+        difficulty: "Advanced",
+        learningTime: "9-14 Months",
+        category: "Artificial Intelligence",
+        isTechnical: true,
+        domain: "Data & AI",
+        icon: "🤖",
+        demand: "Extremely High",
+        averageSalary: "$130,000 - $190,000",
+      },
+      {
+        name: "Cybersecurity Analyst",
+        slug: "cybersecurity-analyst",
+        description:
+          "Protect networks, servers, and digital infrastructure against security breaches, ransomware, and vulnerabilities.",
+        skills: ["Network Security", "Ethical Hacking", "SIEM", "Linux", "Cryptography", "Firewalls", "Wireshark"],
+        difficulty: "Intermediate",
+        learningTime: "6-9 Months",
+        category: "Security",
+        isTechnical: true,
+        domain: "Security & DevOps",
+        icon: "🛡️",
+        demand: "Critical",
+        averageSalary: "$90,000 - $140,000",
+      },
+      {
+        name: "Cloud Engineer",
+        slug: "cloud-engineer",
+        description:
+          "Architect, deploy, and maintain scalable, reliable cloud infrastructure, microservices, and continuous delivery pipelines.",
+        skills: ["AWS", "Docker", "Kubernetes", "Terraform", "CI/CD", "Linux", "Networking", "IAM"],
+        difficulty: "Advanced",
+        learningTime: "6-10 Months",
+        category: "DevOps & Cloud",
+        isTechnical: true,
+        domain: "Security & DevOps",
+        icon: "☁️",
+        demand: "Very High",
+        averageSalary: "$115,000 - $160,000",
+      },
+      {
+        name: "Mobile App Developer",
+        slug: "mobile-app-developer",
+        description:
+          "Create fluid native and cross-platform mobile apps for iOS and Android using Flutter, React Native, or Swift.",
+        skills: ["React Native", "Flutter", "Swift", "Kotlin", "Mobile UI/UX", "REST APIs", "App Store Deployment"],
+        difficulty: "Intermediate",
+        learningTime: "5-8 Months",
+        category: "Technology",
+        isTechnical: true,
+        domain: "Software & Engineering",
+        icon: "📱",
+        demand: "High",
+        averageSalary: "$90,000 - $138,000",
+      },
+      {
+        name: "DevOps Engineer",
+        slug: "devops-engineer",
+        description:
+          "Bridge the gap between software development and IT operations through automated CI/CD, monitoring, and orchestration.",
+        skills: ["Linux", "Docker", "Kubernetes", "Jenkins", "GitHub Actions", "Prometheus", "Ansible"],
+        difficulty: "Advanced",
+        learningTime: "7-11 Months",
+        category: "DevOps & Cloud",
+        isTechnical: true,
+        domain: "Security & DevOps",
+        icon: "🔄",
+        demand: "Very High",
+        averageSalary: "$110,000 - $155,000",
+      },
+
+      // --- NON-TECHNICAL & HYBRID CAREERS ---
+      {
+        name: "Product Manager",
+        slug: "product-manager",
+        description:
+          "Lead cross-functional product teams, define vision, user personas, PRDs, roadmaps, and business success metrics.",
+        skills: ["Product Strategy", "Agile/Scrum", "User Research", "Data Analytics", "Roadmapping", "Feature Prioritization"],
+        difficulty: "Intermediate",
+        learningTime: "5-8 Months",
+        category: "Management",
+        isTechnical: false,
+        domain: "Product & Management",
+        icon: "🚀",
+        demand: "High",
+        averageSalary: "$105,000 - $155,000",
+      },
+      {
+        name: "UI/UX Designer",
+        slug: "ui-ux-designer",
+        description:
+          "Craft intuitive user interfaces, design systems, wireframes, interaction prototypes, and user journey maps.",
+        skills: ["Figma", "Design Systems", "User Research", "Wireframing", "Prototyping", "Information Architecture"],
+        difficulty: "Beginner",
+        learningTime: "4-6 Months",
+        category: "Design",
+        isTechnical: false,
+        domain: "Design & Creative",
+        icon: "🎨",
+        demand: "High",
+        averageSalary: "$80,000 - $125,000",
+      },
+      {
+        name: "Business Analyst",
+        slug: "business-analyst",
+        description:
+          "Analyze business processes, gather stakeholder requirements, model workflows, and translate business needs into technical specs.",
+        skills: ["Requirements Gathering", "Process Modeling (BPMN)", "SQL", "Stakeholder Management", "Jira", "Agile"],
+        difficulty: "Beginner",
+        learningTime: "4-6 Months",
+        category: "Management",
+        isTechnical: false,
+        domain: "Product & Management",
+        icon: "📈",
+        demand: "High",
+        averageSalary: "$78,000 - $120,000",
+      },
+      {
+        name: "Digital Marketing Strategist",
+        slug: "digital-marketing-strategist",
+        description:
+          "Drive customer acquisition, brand presence, content strategy, SEO, SEM, social media funnels, and growth campaigns.",
+        skills: ["SEO & SEM", "Google Analytics 4", "Content Marketing", "Email Campaigns", "Social Media Ads", "Conversion Optimization"],
+        difficulty: "Beginner",
+        learningTime: "3-5 Months",
+        category: "Marketing",
+        isTechnical: false,
+        domain: "Marketing & Growth",
+        icon: "📢",
+        demand: "High",
+        averageSalary: "$65,000 - $105,000",
+      },
+      {
+        name: "IT Project Manager / Scrum Master",
+        slug: "it-project-manager",
+        description:
+          "Facilitate agile teams, unblock engineers, manage sprint ceremonies, monitor project budgets, and ensure delivery milestones.",
+        skills: ["Agile/Scrum", "Sprint Planning", "Jira", "Risk Management", "Budgeting", "Stakeholder Communication"],
+        difficulty: "Intermediate",
+        learningTime: "4-6 Months",
+        category: "Management",
+        isTechnical: false,
+        domain: "Product & Management",
+        icon: "⏱️",
+        demand: "High",
+        averageSalary: "$90,000 - $135,000",
+      },
+      {
+        name: "Technical Content Writer",
+        slug: "technical-content-writer",
+        description:
+          "Produce developer documentation, API guides, technical tutorials, whitepapers, and thought leadership articles.",
+        skills: ["Technical Writing", "Markdown", "API Documentation", "Copywriting", "Developer Advocacy", "SEO"],
+        difficulty: "Beginner",
+        learningTime: "3-5 Months",
+        category: "Marketing",
+        isTechnical: false,
+        domain: "Design & Creative",
+        icon: "✍️",
+        demand: "Medium",
+        averageSalary: "$70,000 - $110,000",
+      },
+    ];
+
+    await Career.insertMany(careers);
+
+    // ==========================================
+    // 2. DETAILED ROADMAPS FOR ALL CAREERS
+    // ==========================================
+    const roadmaps = [
+      {
+        careerSlug: "software-developer",
+        careerName: "Software Developer",
+        overview:
+          "A structured end-to-end milestone path to master modern software development from fundamentals to technical interviews.",
+        steps: [
+          {
+            stepNumber: 1,
+            title: "Programming Fundamentals",
+            description: "Master computer science basics, variables, control flow, functions, loops, and OOP concepts in JavaScript or Python.",
+            topics: ["Variables & Data Types", "Control Structures", "Functions & Scope", "Object-Oriented Programming"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 2,
+            title: "Data Structures & Algorithms",
+            description: "Understand foundational problem-solving techniques, complexity analysis, and standard algorithm patterns.",
+            topics: ["Arrays & Hash Maps", "Linked Lists & Trees", "Sorting & Searching", "Big-O Notation"],
+            estimatedWeeks: 6,
+          },
+          {
+            stepNumber: 3,
+            title: "Web Development",
+            description: "Build responsive, modern user interfaces using semantic HTML5, modern CSS3 layouts, and React.",
+            topics: ["HTML5 & CSS3 Flexbox/Grid", "JavaScript DOM", "React Components & Hooks", "State Management"],
+            estimatedWeeks: 6,
+          },
+          {
+            stepNumber: 4,
+            title: "Databases",
+            description: "Learn relational and non-relational database design, querying, indexing, and data modeling.",
+            topics: ["SQL & PostgreSQL", "MongoDB & Mongoose", "Data Modeling", "Indexes & Performance"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 5,
+            title: "Backend Development",
+            description: "Create robust RESTful APIs, handle authentication, middleware, error handling, and server logic.",
+            topics: ["Node.js & Express", "RESTful API Design", "Authentication & JWT", "API Security & Validation"],
+            estimatedWeeks: 6,
+          },
+          {
+            stepNumber: 6,
+            title: "Projects",
+            description: "Build and deploy full-stack production-ready applications with modern cloud hosting and CI/CD pipelines.",
+            topics: ["Full-Stack CRUD Application", "Authentication & State", "Deployment (Vercel/Render)", "Git & GitHub"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 7,
+            title: "Interview Preparation",
+            description: "Practice technical coding interviews, system design fundamentals, behavioral questions, and resume polishing.",
+            topics: ["LeetCode Problem Sets", "System Design Basics", "Behavioral Interview (STAR)", "Resume & Portfolio"],
+            estimatedWeeks: 4,
+          },
+        ],
+      },
+      {
+        careerSlug: "frontend-developer",
+        careerName: "Frontend Developer",
+        overview: "Specialize in pixel-perfect, accessible, stateful web interfaces and modern JavaScript web frameworks.",
+        steps: [
+          {
+            stepNumber: 1,
+            title: "HTML5, Semantic Web & Modern CSS",
+            description: "Master modern layout engines (Flexbox & CSS Grid), CSS custom properties, and WCAG accessibility standards.",
+            topics: ["Semantic HTML", "Flexbox & Grid Layouts", "Responsive Media Queries", "Accessibility (a11y)"],
+            estimatedWeeks: 3,
+          },
+          {
+            stepNumber: 2,
+            title: "Advanced JavaScript & ES6+",
+            description: "Deep dive into async/await, closures, prototypes, event loop, Fetch API, and DOM manipulation.",
+            topics: ["ES6+ Syntax", "Promises & Async/Await", "Event Delegation & Bubbling", "Modules & Tooling"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 3,
+            title: "React Framework & State Systems",
+            description: "Build reactive components, custom hooks, context management, and routing.",
+            topics: ["Component Lifecycle", "Hooks (useEffect, useMemo)", "React Router", "Zustand/Redux Toolkit"],
+            estimatedWeeks: 6,
+          },
+          {
+            stepNumber: 4,
+            title: "TypeScript for Frontend",
+            description: "Type safety, interfaces, generics, and strict typed component props.",
+            topics: ["Type Annotations & Generics", "Typing Props & State", "API Typing", "Strict Mode Setup"],
+            estimatedWeeks: 3,
+          },
+          {
+            stepNumber: 5,
+            title: "Build Tools & Next.js SSR",
+            description: "Server-side rendering, Vite configuration, code splitting, and asset optimization.",
+            topics: ["Vite & Webpack", "Next.js App Router", "Server vs Client Components", "Core Web Vitals Optimization"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 6,
+            title: "Frontend Testing & Portfolio",
+            description: "Unit testing with Vitest/Jest, React Testing Library, and launching 3 showcase web applications.",
+            topics: ["Vitest & React Testing Library", "E2E with Playwright", "Portfolio Deployments", "Frontend System Design"],
+            estimatedWeeks: 4,
+          },
+        ],
+      },
+      {
+        careerSlug: "backend-developer",
+        careerName: "Backend Developer",
+        overview: "Master server architecture, relational and NoSQL databases, scalable APIs, caching, and server security.",
+        steps: [
+          {
+            stepNumber: 1,
+            title: "Server Environment & Runtime",
+            description: "Master Node.js event loop, streams, buffers, file systems, and asynchronous architectures.",
+            topics: ["Node.js Internals", "Event Loop & Worker Threads", "Streams & File I/O", "CLI Scripting"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 2,
+            title: "API Architecture & Protocols",
+            description: "Design production RESTful endpoints, status codes, headers, and explore GraphQL & WebSockets.",
+            topics: ["RESTful Principles", "Express Middleware", "WebSockets for Real-time", "API Rate Limiting"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 3,
+            title: "Database Design & Optimization",
+            description: "Relational normalization, indexing, transactions (ACID), and schema design with PostgreSQL and MongoDB.",
+            topics: ["PostgreSQL & Prisma", "MongoDB & Mongoose", "Indexing & Query Plans", "Database Migrations"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 4,
+            title: "Authentication & Cryptography",
+            description: "OAuth 2.0, JWT stateless auth, password salting/hashing, session cookies, and CORS policies.",
+            topics: ["JWT Tokens & Refresh Tokens", "bcrypt & Argon2 Hashing", "OAuth 2.0 Flow", "CORS & CSRF Defenses"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 5,
+            title: "Caching & Message Queues",
+            description: "Accelerate throughput using Redis caching, background task queues, and pub/sub messaging.",
+            topics: ["Redis Caching Strategies", "BullMQ / Celery Queues", "RabbitMQ / Kafka Basics", "Microservices Concepts"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 6,
+            title: "Backend Deployment & Observability",
+            description: "Dockerize services, configure health checks, structured logging, and automated CI/CD deployment.",
+            topics: ["Docker Containers", "Logging with Winston/Pino", "Metrics with Prometheus", "Deploying on AWS/Render"],
+            estimatedWeeks: 4,
+          },
+        ],
+      },
+      {
+        careerSlug: "data-analyst",
+        careerName: "Data Analyst",
+        overview: "Transform raw business data into actionable dashboards, KPIs, and strategic statistical insights.",
+        steps: [
+          {
+            stepNumber: 1,
+            title: "Spreadsheet Mastery",
+            description: "Advanced Excel formulas, pivot tables, lookup functions, and data cleansing methods.",
+            topics: ["VLOOKUP & XLOOKUP", "Pivot Tables", "Conditional Logic", "Data Cleaning"],
+            estimatedWeeks: 3,
+          },
+          {
+            stepNumber: 2,
+            title: "SQL & Relational Databases",
+            description: "Master querying, joins, aggregate functions, and window functions for business intelligence.",
+            topics: ["SELECT, WHERE, GROUP BY", "JOIN Operations", "Subqueries & CTEs", "Window Functions"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 3,
+            title: "Data Visualization & BI Tools",
+            description: "Build interactive executive dashboards in Tableau or Power BI.",
+            topics: ["Tableau Basics", "Power BI Dashboards", "Data Storytelling", "Visual Best Practices"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 4,
+            title: "Python for Data Analysis",
+            description: "Automate reporting and exploratory data analysis using Pandas, NumPy, and Seaborn.",
+            topics: ["Pandas DataFrames", "NumPy Operations", "Matplotlib & Seaborn", "Jupyter Notebooks"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 5,
+            title: "Statistical Methods & Metrics",
+            description: "Apply hypothesis testing, descriptive statistics, and probability distributions to KPI analysis.",
+            topics: ["Descriptive Stats", "Hypothesis Testing", "Correlation vs Causation", "A/B Testing"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 6,
+            title: "Portfolio Projects",
+            description: "Create end-to-end case studies demonstrating business impact.",
+            topics: ["Sales Performance Analysis", "Customer Churn Dashboard", "Public Datasets Case Study"],
+            estimatedWeeks: 4,
+          },
+        ],
+      },
+      {
+        careerSlug: "data-scientist",
+        careerName: "Data Scientist",
+        overview: "Master applied mathematics, machine learning modeling, statistical inference, and predictive AI pipelines.",
+        steps: [
+          {
+            stepNumber: 1,
+            title: "Mathematics & Linear Algebra",
+            description: "Linear algebra, matrix operations, multivariable calculus, and probability theory.",
+            topics: ["Vectors & Matrices", "Eigenvalues", "Calculus & Gradients", "Probability Distributions"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 2,
+            title: "Advanced Python & Scientific Stack",
+            description: "Scientific computing using NumPy, Pandas, Scipy, and exploratory data profiling.",
+            topics: ["Vectorized Operations", "Feature Engineering", "Data Imputation", "Dimensionality Reduction"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 3,
+            title: "Classical Machine Learning",
+            description: "Supervised and unsupervised algorithms with Scikit-Learn: regressions, trees, and clustering.",
+            topics: ["Linear/Logistic Regression", "Random Forests & XGBoost", "K-Means & PCA", "Model Evaluation & Cross-Validation"],
+            estimatedWeeks: 6,
+          },
+          {
+            stepNumber: 4,
+            title: "Deep Learning Foundations",
+            description: "Neural network architectures, backpropagation, and training with PyTorch.",
+            topics: ["Feedforward Networks", "Loss Functions & Optimizers", "CNNs for Vision", "PyTorch Framework"],
+            estimatedWeeks: 6,
+          },
+          {
+            stepNumber: 5,
+            title: "MLOps & Model Deployment",
+            description: "Serve models via REST APIs, containerize with Docker, and track experiments with MLflow.",
+            topics: ["FastAPI Serving", "Docker for ML", "MLflow Tracking", "Monitoring & Drift"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 6,
+            title: "Capstone Data Science Project",
+            description: "End-to-end machine learning project solving a real industry prediction problem.",
+            topics: ["Problem Framing", "Pipeline Automation", "Production Deployment", "Technical Article"],
+            estimatedWeeks: 4,
+          },
+        ],
+      },
+      {
+        careerSlug: "ai-ml-engineer",
+        careerName: "AI/ML Engineer",
+        overview: "Build cutting-edge machine learning applications, transformer models, LLM agents, and vector search systems.",
+        steps: [
+          {
+            stepNumber: 1,
+            title: "Python & Advanced Math for AI",
+            description: "Matrix calculus, linear algebra, probability, and high-performance Python.",
+            topics: ["Matrix Operations", "Gradient Descent", "NumPy & SciPy", "Probabilistic Modeling"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 2,
+            title: "Deep Learning & PyTorch",
+            description: "Construct and train deep neural networks, custom layers, and loss functions in PyTorch.",
+            topics: ["Tensors & Autograd", "Custom Datasets & Loaders", "Transfer Learning", "GPU Acceleration (CUDA)"],
+            estimatedWeeks: 6,
+          },
+          {
+            stepNumber: 3,
+            title: "Natural Language Processing & Transformers",
+            description: "Self-attention mechanisms, BERT, GPT, tokenization, and Hugging Face pipelines.",
+            topics: ["Attention Mechanisms", "Hugging Face Transformers", "Fine-Tuning Techniques (LoRA/PEFT)", "Tokenizers"],
+            estimatedWeeks: 6,
+          },
+          {
+            stepNumber: 4,
+            title: "LLMs, RAG & Vector Databases",
+            description: "Build Retrieval-Augmented Generation systems using LangChain, LlamaIndex, and Pinecone.",
+            topics: ["Vector Embeddings", "RAG Architecture", "Pinecone/ChromaDB", "Prompt Engineering"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 5,
+            title: "Autonomous Agents & Tool Calling",
+            description: "Develop agentic AI workflows with multi-step reasoning, tool execution, and guardrails.",
+            topics: ["Function Calling", "Multi-Agent Frameworks", "Evaluation & Benchmarks", "AI Safety & Guardrails"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 6,
+            title: "Production AI Deployment",
+            description: "Deploy scalable inference endpoints using vLLM, Triton, and optimized cloud GPUs.",
+            topics: ["Model Quantization", "vLLM Inference Server", "Streaming Responses", "Latency Optimization"],
+            estimatedWeeks: 4,
+          },
+        ],
+      },
+      {
+        careerSlug: "cybersecurity-analyst",
+        careerName: "Cybersecurity Analyst",
+        overview: "Defend computer systems, networks, cloud platforms, and data against modern digital attacks.",
+        steps: [
+          {
+            stepNumber: 1,
+            title: "Networking & Protocols",
+            description: "Understand TCP/IP, OSI model, DNS, subnets, routing, and packet inspection.",
+            topics: ["OSI Model", "TCP/IP Suite", "Wireshark Packet Analysis", "Routing & Switching"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 2,
+            title: "Operating Systems & Linux Admin",
+            description: "Command line, permissions, process management, shell scripting, and security hardening.",
+            topics: ["Linux Bash Scripting", "System Administration", "File Permissions", "Windows Security"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 3,
+            title: "Security Fundamentals & Threat Landscape",
+            description: "Common vulnerabilities, OWASP Top 10, malware analysis, and threat vectors.",
+            topics: ["OWASP Top 10", "Social Engineering", "Malware Types", "CVE & NIST Frameworks"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 4,
+            title: "SIEM & Security Operations",
+            description: "Log analysis, incident detection, Splunk, and security alert triage.",
+            topics: ["Splunk / Elastic SIEM", "Log Parsing", "Incident Response Workflow", "Alert Triage"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 5,
+            title: "Penetration Testing Basics",
+            description: "Vulnerability assessment, Nmap scanning, Burp Suite, and defensive mitigation.",
+            topics: ["Nmap Scanning", "Burp Suite", "Vulnerability Assessment", "Remediation Reporting"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 6,
+            title: "Certification & Career Prep",
+            description: "Prepare for CompTIA Security+, CySA+, and security analyst interview scenarios.",
+            topics: ["Security+ Prep", "Hands-on Labs (TryHackMe)", "Mock Incident Response Scenarios"],
+            estimatedWeeks: 4,
+          },
+        ],
+      },
+      {
+        careerSlug: "cloud-engineer",
+        careerName: "Cloud Engineer",
+        overview: "Design, automate, and orchestrate cloud infrastructure, microservices, and continuous delivery.",
+        steps: [
+          {
+            stepNumber: 1,
+            title: "Linux & Networking Fundamentals",
+            description: "Command-line prowess, SSH, DNS, VPC routing, subnets, and load balancers.",
+            topics: ["Linux Administration", "Bash Scripting", "TCP/IP & CIDR Subnets", "Security Groups & Firewalls"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 2,
+            title: "AWS Cloud Fundamentals",
+            description: "Core cloud services including EC2, S3, IAM, VPC, RDS, and Lambda.",
+            topics: ["IAM Policies & Roles", "EC2 & Auto-Scaling", "S3 Storage Classes", "Serverless Lambda"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 3,
+            title: "Containers & Docker",
+            description: "Containerize applications, create multi-stage Dockerfiles, and compose multi-service apps.",
+            topics: ["Docker Engine", "Dockerfile Best Practices", "Multi-stage Builds", "Docker Compose"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 4,
+            title: "Kubernetes & Orchestration",
+            description: "Deploy, manage, and scale containerized clusters with Pods, Deployments, and Services.",
+            topics: ["K8s Architecture", "Deployments & Services", "Ingress Controllers", "Helm Charts"],
+            estimatedWeeks: 6,
+          },
+          {
+            stepNumber: 5,
+            title: "Infrastructure as Code (Terraform)",
+            description: "Provision cloud infrastructure declaratively using Terraform and state management.",
+            topics: ["HCL Syntax", "Terraform State & Modules", "Variables & Outputs", "GitOps Workflow"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 6,
+            title: "CI/CD & Monitoring",
+            description: "Automate builds and releases with GitHub Actions and monitor with Prometheus/Grafana.",
+            topics: ["GitHub Actions Pipelines", "Automated Testing", "Prometheus Metrics", "Grafana Dashboards"],
+            estimatedWeeks: 4,
+          },
+        ],
+      },
+      {
+        careerSlug: "mobile-app-developer",
+        careerName: "Mobile App Developer",
+        overview: "Build fluid, reactive, offline-first mobile applications deployed to the iOS App Store and Google Play.",
+        steps: [
+          {
+            stepNumber: 1,
+            title: "Mobile Core Language & SDK",
+            description: "Learn modern mobile programming fundamentals with TypeScript (React Native) or Dart (Flutter).",
+            topics: ["Language Fundamentals", "Mobile UI Components", "Async Storage & Permissions", "Flexbox Mobile Layout"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 2,
+            title: "Navigation & State Management",
+            description: "Master React Navigation / Flutter Navigator, tabs, stack routing, and centralized global stores.",
+            topics: ["Stack & Tab Navigation", "Deep Linking", "Redux/Zustand or Riverpod", "Form Validation"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 3,
+            title: "Device Hardware & APIs",
+            description: "Integrate camera, geolocation, biometric authentication (FaceID), accelerometer, and notifications.",
+            topics: ["Camera & Image Picker", "GPS Location Tracking", "Biometrics & Keychain", "Push Notifications (FCM)"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 4,
+            title: "Offline Sync & Local Databases",
+            description: "Persist offline data using SQLite / WatermelonDB and sync gracefully upon reconnecting.",
+            topics: ["SQLite & Room", "Offline First Patterns", "Network Status Listeners", "Data Synchronization"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 5,
+            title: "Publishing & App Store Compliance",
+            description: "Code signing, provisioning profiles, Google Play App Bundles, App Store guidelines, and TestFlight.",
+            topics: ["Apple Developer Account Setup", "Google Play Console", "TestFlight Beta Testing", "In-App Purchases (IAP)"],
+            estimatedWeeks: 3,
+          },
+          {
+            stepNumber: 6,
+            title: "Capstone Mobile App",
+            description: "Ship a complete production mobile utility or social application to public test tracks.",
+            topics: ["Production Build Optimization", "Crashlytics Integration", "User Feedback Loop", "Portfolio Presentation"],
+            estimatedWeeks: 4,
+          },
+        ],
+      },
+      {
+        careerSlug: "devops-engineer",
+        careerName: "DevOps Engineer",
+        overview: "Automate deployments, orchestrate reliable cloud fleets, enforce security guardrails, and maximize system uptime.",
+        steps: [
+          {
+            stepNumber: 1,
+            title: "Linux, Shell & Scripting",
+            description: "Automate system tasks, parse logs, write modular Bash and Python automation scripts.",
+            topics: ["Linux Kernel & Systemd", "Advanced Bash Scripting", "Python Automation", "SSH & Key Management"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 2,
+            title: "Continuous Integration & Delivery (CI/CD)",
+            description: "Build automated build, test, and container release pipelines with GitHub Actions and GitLab CI.",
+            topics: ["Pipeline as Code", "Artifact Caching", "Automated Linting & Unit Tests", "Multi-Environment Deployment"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 3,
+            title: "Containerization & Orchestration",
+            description: "Production Docker security, multi-container compose, and enterprise Kubernetes cluster management.",
+            topics: ["Distroless Images", "Kubernetes Manifests", "Ingress, Secrets, ConfigMaps", "Service Meshes (Istio)"],
+            estimatedWeeks: 6,
+          },
+          {
+            stepNumber: 4,
+            title: "Infrastructure as Code & Configuration Management",
+            description: "Terraform cloud modules, state locking with DynamoDB/S3, and Ansible configuration orchestration.",
+            topics: ["Terraform HCL", "State Locking & Workspaces", "Ansible Playbooks", "GitOps with ArgoCD"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 5,
+            title: "Observability, Telemetry & Incident Response",
+            description: "Distributed tracing, Prometheus metrics collection, Grafana dashboards, and PagerDuty alert policies.",
+            topics: ["OpenTelemetry Standards", "Prometheus & AlertManager", "Grafana Visualization", "On-Call Runbooks"],
+            estimatedWeeks: 4,
+          },
+        ],
+      },
+
+      // --- NON-TECHNICAL ROADMAPS ---
+      {
+        careerSlug: "product-manager",
+        careerName: "Product Manager",
+        overview: "Define product vision, run customer discovery, write PRDs, prioritize roadmaps, and ship high-impact features.",
+        steps: [
+          {
+            stepNumber: 1,
+            title: "Product Discovery & Customer Interviews",
+            description: "Identify user pain points, validate hypotheses, and conduct qualitative discovery calls.",
+            topics: ["User Problem Framing", "Customer Interview Scripts", "Jobs-to-be-Done (JTBD)", "Market Research"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 2,
+            title: "Product Requirements & Specifications (PRD)",
+            description: "Write clear user stories, acceptance criteria, wireframes, and technical specifications.",
+            topics: ["PRD Structure", "User Stories & Epics", "Acceptance Criteria", "Edge Case Identification"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 3,
+            title: "Prioritization & Roadmap Strategy",
+            description: "Apply frameworks like RICE, Kano, and MoSCoW to prioritize features strategically.",
+            topics: ["RICE Framework", "Outcome-based Roadmaps", "Stakeholder Alignment", "Trade-off Decisions"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 4,
+            title: "Agile & Scrum Execution",
+            description: "Sprint planning, backlog grooming, retrospectives, and cross-functional engineering leadership.",
+            topics: ["Scrum Ceremonies", "Jira & Linear Management", "Release Planning", "Developer Collaboration"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 5,
+            title: "Product Analytics & Metrics (AARRR)",
+            description: "Measure funnel conversions, retention cohorts, churn, and A/B test experiments.",
+            topics: ["North Star Metric", "AARRR Pirate Funnel", "Cohort Retention Curves", "A/B Testing Hypotheses"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 6,
+            title: "Go-To-Market & Executive Pitching",
+            description: "Launch products, align marketing/sales, measure launch KPIs, and present to leadership.",
+            topics: ["GTM Strategy", "Pricing & Packaging", "Executive Pitch Decks", "Product Case Interviews"],
+            estimatedWeeks: 4,
+          },
+        ],
+      },
+      {
+        careerSlug: "ui-ux-designer",
+        careerName: "UI/UX Designer",
+        overview: "Learn human-centered product design, design systems, Figma workflows, and user testing.",
+        steps: [
+          {
+            stepNumber: 1,
+            title: "Design Principles & Color Theory",
+            description: "Visual hierarchy, typography, grids, layout theory, and accessibility contrast standards.",
+            topics: ["Typography & Hierarchy", "Color Harmonies", "Grid Systems", "WCAG Accessibility"],
+            estimatedWeeks: 3,
+          },
+          {
+            stepNumber: 2,
+            title: "Figma Mastery",
+            description: "Master vector networks, auto-layout, components, variants, and interactive prototyping.",
+            topics: ["Auto Layout & Constraints", "Component Sets", "Interactive Prototypes", "Design Tokens"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 3,
+            title: "User Research & Information Architecture",
+            description: "User interviews, persona creation, empathy mapping, and user flow diagrams.",
+            topics: ["User Personas", "Journey Mapping", "Card Sorting", "Site Architecture"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 4,
+            title: "Design Systems & UI Kits",
+            description: "Build scalable atomic design systems and reusable design libraries.",
+            topics: ["Atomic Design Principles", "Tokens & Variables", "Documentation", "Handoff to Devs"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 5,
+            title: "Usability Testing & Iteration",
+            description: "Conduct usability tests, gather qualitative feedback, and iterate on interfaces.",
+            topics: ["Usability Benchmarking", "A/B Testing UI", "Heuristic Evaluation"],
+            estimatedWeeks: 3,
+          },
+          {
+            stepNumber: 6,
+            title: "Portfolio & Case Studies",
+            description: "Document 3 in-depth design case studies with problem framing and results.",
+            topics: ["Design Case Study Writing", "Interactive Prototypes Demo", "Design Interview Prep"],
+            estimatedWeeks: 4,
+          },
+        ],
+      },
+      {
+        careerSlug: "business-analyst",
+        careerName: "Business Analyst",
+        overview: "Bridge business strategy and technical implementations by defining process workflows and data-backed requirements.",
+        steps: [
+          {
+            stepNumber: 1,
+            title: "Business Analysis Principles & BABOK",
+            description: "Understand the core concepts of the Business Analysis Body of Knowledge (BABOK) and enterprise architecture.",
+            topics: ["BABOK Knowledge Areas", "SWOT & PESTLE Analysis", "Stakeholder Matrix", "Business Case Development"],
+            estimatedWeeks: 3,
+          },
+          {
+            stepNumber: 2,
+            title: "Requirements Engineering & Documentation",
+            description: "Elicit, analyze, validate, and document functional and non-functional requirements (BRD, FRS).",
+            topics: ["BRD & FRD Writing", "Use Case Modeling", "User Stories & Traceability", "Acceptance Criteria"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 3,
+            title: "Business Process Modeling (BPMN)",
+            description: "Map current-state ('As-Is') and future-state ('To-Be') business operations using BPMN standards in Visio or Lucidchart.",
+            topics: ["BPMN 2.0 Notations", "Swimlane Diagrams", "Gap Analysis", "Process Optimization"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 4,
+            title: "Data Analysis & SQL for BAs",
+            description: "Extract and query operational databases to validate hypotheses and build operational KPI dashboards.",
+            topics: ["SQL Queries & Joins", "Excel Data Modeling", "Tableau/Power BI Reporting", "Data Mapping"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 5,
+            title: "Agile BA & Stakeholder Collaboration",
+            description: "Run backlog refinement, manage scope change requests, facilitate sprint retrospectives, and coordinate UAT.",
+            topics: ["Agile/Scrum Ceremonies", "User Acceptance Testing (UAT)", "Conflict Resolution", "Change Management"],
+            estimatedWeeks: 4,
+          },
+        ],
+      },
+      {
+        careerSlug: "digital-marketing-strategist",
+        careerName: "Digital Marketing Strategist",
+        overview: "Master full-funnel acquisition, search engine optimization, paid marketing, copy conversion, and analytics.",
+        steps: [
+          {
+            stepNumber: 1,
+            title: "Marketing Fundamentals & Customer Journeys",
+            description: "Understand TAM/SAM, customer personas, conversion funnels (TOFU, MOFU, BOFU), and brand positioning.",
+            topics: ["Customer Persona Development", "Value Proposition Design", "Marketing Funnels", "Competitor Benchmarking"],
+            estimatedWeeks: 3,
+          },
+          {
+            stepNumber: 2,
+            title: "Search Engine Optimization (SEO)",
+            description: "Master on-page SEO, technical auditing, keyword research, backlink acquisition, and Google Search Console.",
+            topics: ["Keyword Research (Ahrefs/SEMrush)", "On-Page Content Optimization", "Technical SEO Crawling", "Backlink Building"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 3,
+            title: "Paid Advertising (PPC & Social)",
+            description: "Create and optimize campaigns across Google Ads (Search/Performance Max) and Meta Ads Manager.",
+            topics: ["Google Search Ads Strategy", "Meta Ad Creative & Copy", "Audience Retargeting", "ROAS & CPA Bidding"],
+            estimatedWeeks: 5,
+          },
+          {
+            stepNumber: 4,
+            title: "Email Marketing & Lifecycle Automation",
+            description: "Design automated nurture sequences, welcome drip campaigns, customer segmentation, and newsletter strategy.",
+            topics: ["Email Copywriting", "HubSpot / Klaviyo Workflows", "Deliverability & Open Rates", "A/B Testing Subject Lines"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 5,
+            title: "Analytics & Attribution Modeling",
+            description: "Track conversions with Google Analytics 4 (GA4), UTM parameters, multi-touch attribution, and executive reporting.",
+            topics: ["GA4 Events & Conversions", "UTM Tracking Hygiene", "Attribution Models", "Looker Studio Dashboards"],
+            estimatedWeeks: 4,
+          },
+        ],
+      },
+      {
+        careerSlug: "it-project-manager",
+        careerName: "IT Project Manager / Scrum Master",
+        overview: "Direct technology delivery, unblock cross-functional engineering teams, manage budgets, and mitigate project risks.",
+        steps: [
+          {
+            stepNumber: 1,
+            title: "Project Management Methodologies",
+            description: "Compare Agile, Waterfall, Kanban, and hybrid delivery models; master project charters and work breakdown structures (WBS).",
+            topics: ["WBS & Scope Management", "Agile vs Waterfall", "Project Charters", "Milestone Planning"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 2,
+            title: "Scrum Master Facilitation",
+            description: "Facilitate daily standups, sprint planning, sprint reviews, and sprint retrospectives with engineering empathy.",
+            topics: ["Scrum Roles & Ceremonies", "Burndown Charts & Velocity", "Backlog Grooming", "Team Retrospectives"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 3,
+            title: "Jira & Modern Workflow Systems",
+            description: "Configure Jira boards, roadmaps, automations, epics, sprint workflows, and SLA notifications.",
+            topics: ["Jira Board Configurations", "Sprint Metrics & Reports", "Linear / Asana Workflows", "Workflow Automations"],
+            estimatedWeeks: 3,
+          },
+          {
+            stepNumber: 4,
+            title: "Risk, Budget & Vendor Management",
+            description: "Build risk registers (RAID logs), estimate staffing costs, track milestone budgets, and manage 3rd-party software vendors.",
+            topics: ["RAID Log Creation", "Budget Tracking & CapEx/OpEx", "Vendor SLAs & Contracts", "Critical Path Method (CPM)"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 5,
+            title: "PMP / CAPM / PSM Certification Prep",
+            description: "Prepare for professional industry certifications like PMI CAPM/PMP or Scrum.org Professional Scrum Master (PSM I).",
+            topics: ["PMBOK 7th Edition", "Mock Exam Simulations", "Stakeholder Communication", "Leadership & Conflict Management"],
+            estimatedWeeks: 4,
+          },
+        ],
+      },
+      {
+        careerSlug: "technical-content-writer",
+        careerName: "Technical Content Writer",
+        overview: "Translate complex engineering concepts, APIs, and software architectures into clear, actionable guides and documentation.",
+        steps: [
+          {
+            stepNumber: 1,
+            title: "Technical Writing Style & Grammar",
+            description: "Learn Google Developer Documentation Style Guide, concise sentence structures, active voice, and formatting.",
+            topics: ["Developer Documentation Style", "Clarity & Readability Metrics", "Formatting Code Blocks", "Glossary Curation"],
+            estimatedWeeks: 3,
+          },
+          {
+            stepNumber: 2,
+            title: "Docs-as-Code & Markdown Tools",
+            description: "Author documentation in Markdown/MDX, manage versions with Git, and deploy via Docusaurus, MkDocs, or Starlight.",
+            topics: ["Git Workflow for Docs", "Docusaurus & MkDocs", "Static Site Generators", "Continuous Documentation CI/CD"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 3,
+            title: "API Documentation & OpenAPI/Swagger",
+            description: "Document RESTful endpoints, request/response payloads, auth headers, and interactive Swagger/Postman collections.",
+            topics: ["OpenAPI 3.0 Spec", "Postman Collections", "SDK Quickstart Guides", "Error Code Cataloging"],
+            estimatedWeeks: 4,
+          },
+          {
+            stepNumber: 4,
+            title: "Developer Tutorials & Thought Leadership",
+            description: "Create step-by-step code walkthroughs, architectural deep-dives, and publish on Dev.to, Medium, and company engineering blogs.",
+            topics: ["Writing Sample Code Repos", "SEO for Technical Blogs", "Developer Marketing", "Portfolio Showcase"],
+            estimatedWeeks: 4,
+          },
+        ],
+      },
+    ];
+
+    await Roadmap.insertMany(roadmaps);
+
+    // ==========================================
+    // 3. CURATED RESOURCES (TECHNICAL & NON-TECHNICAL)
+    // ==========================================
+    const resources = [
+      // --- TECHNICAL: COURSES ---
+      {
+        title: "CS50x: Introduction to Computer Science",
+        category: "Courses",
+        isTechnical: true,
+        provider: "Harvard University",
+        duration: "12 Weeks",
+        rating: 4.9,
+        isFree: true,
+        description: "Harvard's world-famous introduction to intellectual enterprises of computer science and the art of programming.",
+        difficulty: "Beginner",
+        link: "https://cs50.harvard.edu/x",
+        careerSlug: "software-developer",
+        tags: ["C", "Python", "Algorithms", "CS Fundamentals"],
+      },
+      {
+        title: "The Odin Project: Full Stack JavaScript",
+        category: "Courses",
+        isTechnical: true,
+        provider: "The Odin Project",
+        duration: "Self-paced",
+        rating: 4.9,
+        isFree: true,
+        description: "A free, open-source full stack curriculum that has helped thousands of students become professional developers.",
+        difficulty: "Beginner",
+        link: "https://theodinproject.com",
+        careerSlug: "software-developer",
+        tags: ["JavaScript", "React", "Node.js", "Full Stack"],
+      },
+      {
+        title: "Full Stack Open 2024",
+        category: "Courses",
+        isTechnical: true,
+        provider: "University of Helsinki",
+        duration: "Self-paced",
+        rating: 4.9,
+        isFree: true,
+        description: "Deep dive into modern web development with React, Redux, Node.js, MongoDB, GraphQL, and TypeScript.",
+        difficulty: "Intermediate",
+        link: "https://fullstackopen.com/en/",
+        careerSlug: "software-developer",
+        tags: ["React", "TypeScript", "GraphQL", "CI/CD"],
+      },
+      {
+        title: "Machine Learning Specialization",
+        category: "Courses",
+        isTechnical: true,
+        provider: "DeepLearning.AI / Coursera (Andrew Ng)",
+        duration: "3 Months",
+        rating: 4.9,
+        isFree: true,
+        description: "Foundational machine learning program covering supervised algorithms, neural networks, and best practices.",
+        difficulty: "Intermediate",
+        link: "https://www.coursera.org/specializations/machine-learning-introduction",
+        careerSlug: "data-scientist",
+        tags: ["Machine Learning", "Python", "NumPy", "Deep Learning"],
+      },
+      {
+        title: "AWS Skill Builder: Cloud Practitioner Essentials",
+        category: "Courses",
+        isTechnical: true,
+        provider: "Amazon Web Services",
+        duration: "6 Hours",
+        rating: 4.8,
+        isFree: true,
+        description: "Official AWS training course introducing core compute, storage, database, networking, and cloud security concepts.",
+        difficulty: "Beginner",
+        link: "https://aws.amazon.com/training/digital/aws-cloud-practitioner-essentials/",
+        careerSlug: "cloud-engineer",
+        tags: ["AWS", "Cloud", "S3", "EC2"],
+      },
+      {
+        title: "React Official Interactive Tutorial & Docs",
+        category: "Courses",
+        isTechnical: true,
+        provider: "React Core Team",
+        duration: "Self-paced",
+        rating: 4.9,
+        isFree: true,
+        description: "The modern React documentation with interactive sandboxes, best practices, and deep dives into state management.",
+        difficulty: "Beginner",
+        link: "https://react.dev/learn",
+        careerSlug: "frontend-developer",
+        tags: ["React", "JavaScript", "Frontend", "Hooks"],
+      },
+
+      // --- NON-TECHNICAL: COURSES ---
+      {
+        title: "Google Project Management Professional Certificate",
+        category: "Courses",
+        isTechnical: false,
+        provider: "Google Career Certificates",
+        duration: "6 Months",
+        rating: 4.8,
+        isFree: true,
+        description: "Hands-on training in agile project planning, documentation, risk management, and scrum ceremonies from Google managers.",
+        difficulty: "Beginner",
+        link: "https://grow.google/certificates/project-management/",
+        careerSlug: "it-project-manager",
+        tags: ["Project Management", "Agile", "Scrum", "Google"],
+      },
+      {
+        title: "Digital Marketing Certification by HubSpot",
+        category: "Courses",
+        isTechnical: false,
+        provider: "HubSpot Academy",
+        duration: "6 Hours",
+        rating: 4.8,
+        isFree: true,
+        description: "Master inbound marketing, content creation, search engine optimization (SEO), and email lead nurturing campaigns.",
+        difficulty: "Beginner",
+        link: "https://academy.hubspot.com/courses/digital-marketing",
+        careerSlug: "digital-marketing-strategist",
+        tags: ["Digital Marketing", "SEO", "Content", "Inbound"],
+      },
+      {
+        title: "Figma for UI/UX Design Masterclass",
+        category: "Courses",
+        isTechnical: false,
+        provider: "Figma Community & Academy",
+        duration: "Self-paced",
+        rating: 4.9,
+        isFree: true,
+        description: "Learn auto-layout, interactive prototypes, design system tokens, and client handoff directly in Figma.",
+        difficulty: "Beginner",
+        link: "https://figma.com/resources",
+        careerSlug: "ui-ux-designer",
+        tags: ["Figma", "UI/UX", "Design Systems", "Prototypes"],
+      },
+      {
+        title: "Product Management Foundations",
+        category: "Courses",
+        isTechnical: false,
+        provider: "Product School",
+        duration: "Self-paced",
+        rating: 4.8,
+        isFree: true,
+        description: "Learn the fundamentals of product discovery, user personas, roadmapping, and cross-functional leadership.",
+        difficulty: "Beginner",
+        link: "https://productschool.com/free-resources",
+        careerSlug: "product-manager",
+        tags: ["Product Management", "Roadmaps", "Strategy"],
+      },
+      {
+        title: "Business Analysis Basics & Requirements Gathering",
+        category: "Courses",
+        isTechnical: false,
+        provider: "IIBA Learning Hub",
+        duration: "10 Hours",
+        rating: 4.7,
+        isFree: true,
+        description: "Understand stakeholder elicitation, user stories, functional requirement documentation, and BPMN process mapping.",
+        difficulty: "Beginner",
+        link: "https://iiba.org",
+        careerSlug: "business-analyst",
+        tags: ["Business Analysis", "Requirements", "Process Mapping"],
+      },
+
+      // --- TECHNICAL & NON-TECHNICAL: BOOKS ---
+      {
+        title: "Designing Data-Intensive Applications",
+        category: "Books",
+        isTechnical: true,
+        provider: "Martin Kleppmann / O'Reilly",
+        duration: "616 Pages",
+        rating: 4.9,
+        isFree: false,
+        description: "The gold standard book on databases, distributed systems, streaming architectures, and system resilience.",
+        difficulty: "Advanced",
+        link: "https://dataintensive.net",
+        careerSlug: "software-developer",
+        tags: ["Distributed Systems", "Databases", "Architecture"],
+      },
+      {
+        title: "Clean Code: A Handbook of Agile Software Craftsmanship",
+        category: "Books",
+        isTechnical: true,
+        provider: "Robert C. Martin",
+        duration: "464 Pages",
+        rating: 4.7,
+        isFree: false,
+        description: "Timeless principles for naming, modular functions, formatting, error handling, and clean software architecture.",
+        difficulty: "Intermediate",
+        link: "https://oreilly.com",
+        careerSlug: "software-developer",
+        tags: ["Clean Code", "Best Practices", "Refactoring"],
+      },
+      {
+        title: "Inspired: How to Create Tech Products Customers Love",
+        category: "Books",
+        isTechnical: false,
+        provider: "Marty Cagan / Silicon Valley Product Group",
+        duration: "368 Pages",
+        rating: 4.9,
+        isFree: false,
+        description: "The definitive guide on modern product discovery, customer empathy, team topology, and product leadership.",
+        difficulty: "All Levels",
+        link: "https://svpg.com/books/inspired",
+        careerSlug: "product-manager",
+        tags: ["Product Management", "Strategy", "Discovery"],
+      },
+      {
+        title: "Don't Make Me Think, Revisited",
+        category: "Books",
+        isTechnical: false,
+        provider: "Steve Krug",
+        duration: "216 Pages",
+        rating: 4.8,
+        isFree: false,
+        description: "A common-sense approach to web and mobile usability that every designer, developer, and manager must read.",
+        difficulty: "All Levels",
+        link: "https://sensible.com/dont-make-me-think",
+        careerSlug: "ui-ux-designer",
+        tags: ["Usability", "UI/UX", "Human Psychology"],
+      },
+      {
+        title: "The Lean Startup",
+        category: "Books",
+        isTechnical: false,
+        provider: "Eric Ries",
+        duration: "336 Pages",
+        rating: 4.8,
+        isFree: false,
+        description: "How constant innovation, Build-Measure-Learn feedback loops, and MVPs create radically successful companies.",
+        difficulty: "All Levels",
+        link: "https://theleanstartup.com",
+        careerSlug: "product-manager",
+        tags: ["Startup", "Agile", "MVP", "Growth"],
+      },
+
+      // --- TECHNICAL & NON-TECHNICAL: ARTICLES ---
+      {
+        title: "Refactoring Guru: Design Patterns Visualized",
+        category: "Articles",
+        isTechnical: true,
+        provider: "Refactoring.Guru",
+        duration: "15 min read",
+        rating: 4.9,
+        isFree: true,
+        description: "Clear explanations, visual diagrams, and code snippets for Creational, Structural, and Behavioral design patterns.",
+        difficulty: "Intermediate",
+        link: "https://refactoring.guru/design-patterns",
+        careerSlug: "software-developer",
+        tags: ["Design Patterns", "Clean Code", "OOP"],
+      },
+      {
+        title: "System Design Primer: Scalability Cheatsheet",
+        category: "Articles",
+        isTechnical: true,
+        provider: "GitHub Open Source (Donne Martin)",
+        duration: "45 min read",
+        rating: 5.0,
+        isFree: true,
+        description: "Comprehensive open-source guide explaining how to design large-scale web systems for millions of concurrent users.",
+        difficulty: "Intermediate",
+        link: "https://github.com/donnemartin/system-design-primer",
+        careerSlug: "backend-developer",
+        tags: ["System Design", "Scalability", "Caching", "Load Balancers"],
+      },
+      {
+        title: "How to Write a World-Class PRD (Product Requirements Document)",
+        category: "Articles",
+        isTechnical: false,
+        provider: "Lenny's Newsletter",
+        duration: "20 min read",
+        rating: 4.9,
+        isFree: true,
+        description: "Practical templates, frameworks, and tips for creating crisp product requirements that align teams and ship features.",
+        difficulty: "Intermediate",
+        link: "https://www.lennysnewsletter.com",
+        careerSlug: "product-manager",
+        tags: ["PRD", "Product Management", "Templates"],
+      },
+      {
+        title: "The Complete Guide to Google Analytics 4 (GA4) for Marketers",
+        category: "Articles",
+        isTechnical: false,
+        provider: "Search Engine Journal",
+        duration: "18 min read",
+        rating: 4.7,
+        isFree: true,
+        description: "In-depth guide to setting up custom events, conversion funnels, exploration reports, and UTM tracking in GA4.",
+        difficulty: "Beginner",
+        link: "https://searchenginejournal.com",
+        careerSlug: "digital-marketing-strategist",
+        tags: ["GA4", "Analytics", "Marketing", "SEO"],
+      },
+
+      // --- TECHNICAL & NON-TECHNICAL: VIDEOS ---
+      {
+        title: "Full Stack Web Development in 100 Seconds",
+        category: "Videos",
+        isTechnical: true,
+        provider: "Fireship (YouTube)",
+        duration: "3 Minutes",
+        rating: 4.9,
+        isFree: true,
+        description: "High-energy overview explaining how the browser, server, database, protocols, and APIs fit together.",
+        difficulty: "Beginner",
+        link: "https://youtube.com",
+        careerSlug: "software-developer",
+        tags: ["Architecture", "Quick Overview", "Full Stack"],
+      },
+      {
+        title: "Git & GitHub Crash Course for Beginners",
+        category: "Videos",
+        isTechnical: true,
+        provider: "Traversy Media",
+        duration: "45 Minutes",
+        rating: 4.9,
+        isFree: true,
+        description: "Complete hands-on walkthrough covering git init, commit, branching, pull requests, and merge conflict resolution.",
+        difficulty: "Beginner",
+        link: "https://youtube.com",
+        careerSlug: "software-developer",
+        tags: ["Git", "GitHub", "Version Control"],
+      },
+      {
+        title: "Product Management Case Interview Masterclass",
+        category: "Videos",
+        isTechnical: false,
+        provider: "Exponent (YouTube)",
+        duration: "40 Minutes",
+        rating: 4.9,
+        isFree: true,
+        description: "Watch a mock product management interview with a Google PM, featuring live feedback and framework breakdowns.",
+        difficulty: "Intermediate",
+        link: "https://youtube.com",
+        careerSlug: "product-manager",
+        tags: ["Interviews", "Mock Interview", "PM"],
+      },
+      {
+        title: "Figma UI Design for Non-Designers",
+        category: "Videos",
+        isTechnical: false,
+        provider: "Kevin Powell (YouTube)",
+        duration: "1 Hour",
+        rating: 4.8,
+        isFree: true,
+        description: "Learn visual balance, spacing, contrast, and layout tricks in Figma to make any website look professional.",
+        difficulty: "Beginner",
+        link: "https://youtube.com",
+        careerSlug: "ui-ux-designer",
+        tags: ["Figma", "UI Design", "Visuals"],
+      },
+
+      // --- TECHNICAL & NON-TECHNICAL: PRACTICE ---
+      {
+        title: "LeetCode Top Interview 150 Coding Challenges",
+        category: "Practice",
+        isTechnical: true,
+        provider: "LeetCode",
+        duration: "Interactive Practice",
+        rating: 4.8,
+        isFree: true,
+        description: "The definitive curated set of data structure and algorithm problems tested by Google, Meta, and Amazon.",
+        difficulty: "Intermediate",
+        link: "https://leetcode.com/studyplan/top-interview-150/",
+        careerSlug: "software-developer",
+        tags: ["DSA", "LeetCode", "Algorithms", "Coding"],
+      },
+      {
+        title: "TryHackMe: Pre-Security & Defensive Labs",
+        category: "Practice",
+        isTechnical: true,
+        provider: "TryHackMe",
+        duration: "Interactive Labs",
+        rating: 4.9,
+        isFree: true,
+        description: "Hands-on browser-based cybersecurity labs covering network packets, Linux security, and ethical vulnerability scanning.",
+        difficulty: "Beginner",
+        link: "https://tryhackme.com",
+        careerSlug: "cybersecurity-analyst",
+        tags: ["Cybersecurity", "Hands-on", "Linux", "Networking"],
+      },
+      {
+        title: "Daily UI 100-Day Design Challenge",
+        category: "Practice",
+        isTechnical: false,
+        provider: "Daily UI",
+        duration: "100 Days",
+        rating: 4.8,
+        isFree: true,
+        description: "Daily design prompts sent to your inbox to build an incredible Figma UI/UX portfolio and hone visual craft.",
+        difficulty: "Beginner",
+        link: "https://dailyui.co",
+        careerSlug: "ui-ux-designer",
+        tags: ["Design Challenge", "Portfolio", "UI/UX"],
+      },
+      {
+        title: "Kaggle Competitions & Real-World Datasets",
+        category: "Practice",
+        isTechnical: true,
+        provider: "Kaggle",
+        duration: "Interactive Challenges",
+        rating: 4.9,
+        isFree: true,
+        description: "Clean real datasets, build predictive regression/classification models, and learn from top community notebooks.",
+        difficulty: "Intermediate",
+        link: "https://kaggle.com",
+        careerSlug: "data-scientist",
+        tags: ["Data Science", "Machine Learning", "Kaggle"],
+      },
+
+      // --- TECHNICAL & NON-TECHNICAL: PROJECTS ---
+      {
+        title: "Full-Stack SaaS Platform with Stripe & MongoDB",
+        category: "Projects",
+        isTechnical: true,
+        provider: "Open Source Blueprint",
+        duration: "25 Hours",
+        rating: 4.9,
+        isFree: true,
+        description: "Build an end-to-end full stack web app with JWT authentication, subscription billing, and MongoDB database models.",
+        difficulty: "Advanced",
+        link: "https://github.com",
+        careerSlug: "software-developer",
+        tags: ["Full Stack", "React", "Node", "MongoDB", "Stripe"],
+      },
+      {
+        title: "Executive Business KPI Dashboard with SQL & Power BI",
+        category: "Projects",
+        isTechnical: true,
+        provider: "Portfolio Case Study",
+        duration: "15 Hours",
+        rating: 4.8,
+        isFree: true,
+        description: "Extract multi-table retail data with complex SQL joins, clean records, and build a high-impact interactive dashboard.",
+        difficulty: "Intermediate",
+        link: "https://github.com",
+        careerSlug: "data-analyst",
+        tags: ["SQL", "Power BI", "Dashboard", "Portfolio"],
+      },
+      {
+        title: "Complete Product GTM (Go-to-Market) Launch Plan",
+        category: "Projects",
+        isTechnical: false,
+        provider: "Product Management Case",
+        duration: "10 Hours",
+        rating: 4.8,
+        isFree: true,
+        description: "Document competitive positioning, pricing tiers, customer discovery interview analysis, and launch metrics for a new SaaS feature.",
+        difficulty: "Intermediate",
+        link: "https://notion.so",
+        careerSlug: "product-manager",
+        tags: ["Product", "GTM", "Strategy", "Case Study"],
+      },
+      {
+        title: "Mobile App Redesign Case Study & Interactive Prototype",
+        category: "Projects",
+        isTechnical: false,
+        provider: "Design Portfolio Template",
+        duration: "15 Hours",
+        rating: 4.9,
+        isFree: true,
+        description: "Conduct user interviews, sketch wireframes, create component systems in Figma, and build an interactive mobile prototype.",
+        difficulty: "Intermediate",
+        link: "https://figma.com",
+        careerSlug: "ui-ux-designer",
+        tags: ["UI/UX", "Case Study", "Figma", "Design System"],
+      },
+    ];
+
+    await Resource.insertMany([...resources, ...additionalResources]);
+    await seedGeneratedCatalog();
+
+    console.log(`Database successfully seeded with ${careers.length} careers, ${roadmaps.length} roadmaps, and ${resources.length + additionalResources.length} resources!`);
+  } catch (error) {
+    console.error("Database seeding error:", error);
+    throw error;
+  }
+};
